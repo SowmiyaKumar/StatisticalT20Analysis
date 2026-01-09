@@ -1,0 +1,553 @@
+---
+title: "Statistical data analysis project - Assignment 2"
+author: "Sowmiya Kumar(s4040536)"
+date: "Last updated: `r format(Sys.time(), '%d %B, %Y')`"
+output:
+  slidy_presentation:
+    highlight: haddock
+  beamer_presentation:
+    highlight: haddock
+    latex_engine: xelatex
+subtitle: 'Dot Ball Pressure: A Statistical Analysis of Powerplay Impact in Mens T20
+  Internationals'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	fig.align = "center",
+	message = FALSE,
+	warning = FALSE
+)
+library(ggplot2)
+library(dplyr)
+library(knitr)
+library(readr)
+library(patchwork)
+```
+
+# RPubs link information
+
+* It is not necessary (That is, it is optional and not compulsory) but if you like you can publish your presentation to RPubs (see [here](https://astral-theory-157510.appspot.com/secured/RBootcamp_Course_04.html#creating_an_r_markdown_document_in_r_studio)) and add this link to your presentation here.
+
+* Rpubs link comes here: [www](http://www).........
+
+# Introduction
+
+<table>
+<tr>
+<td style="width:60%; vertical-align:top;">
+
+- Cricket is a global sport with several formats.
+- **T20 International (T20I)** is the shortest and fastest format—each team plays a single *innings* of up to **20 overs** (one over = 6 balls).
+- In every match:
+    - Each team gets **one innings** to score as many runs as possible.
+    - The opposing team bowls and fields, aiming to restrict runs and take wickets.
+- While T20 is famous for aggressive scoring, there is a hidden battle: the **dot ball**.
+    - A *dot ball* is a legal delivery where the batter scores **zero runs** (no runs off the bat and no extras).
+    - Dot balls may seem minor, but they silently build pressure and can change the momentum of an innings.
+- Every match has three phases:
+    - **Powerplay (Overs 1–6)** – Fielding restrictions, batters attack
+    - **Middle Overs (7–16)** – Balanced play, risk and rotation
+    - **Death Overs (17–20)** – High pace and high risk scoring
+- This study explores dot ball distribution in Powerplay and Non-Powerplay overs.
+- **Dataset:** Over **400,000+ deliveries** from men’s T20I matches were analysed.
+
+</td>
+<td style="width:40%; text-align:center;">
+
+<img src="t20_dot_ball.jpg" width="90%"><br>
+<small><em>Source: <a href="https://twitter.com/ICC/status/1305771585949896706">@ICC on Twitter</a></em></small>
+
+</td>
+</tr>
+</table>
+
+
+# Problem Statement
+
+<table>
+<tr>
+<td style="width:60%; vertical-align:top;">
+
+### Statistical Question
+
+Is there a significant difference in dot ball frequency between Powerplay (Overs 1–6) and Non-Powerplay (Overs 7–20) in Men's T20 Internationals?
+
+### Why This Matters
+
+- Powerplay overs have strict fielding rules (only two fielders allowed outside the circle), increasing pressure on batters and bowlers.
+- Dot balls in these overs can halt the batting side’s momentum and lead to mistakes or wickets.
+- For coaches and players, knowing when dot balls are most common can influence match strategy and decision-making.
+- For fans, it reveals the “hidden” battles that shape T20 cricket beyond just boundary-hitting.
+
+### Analytical Approach
+
+- Calculate dot ball rates for both Powerplay and Non-Powerplay overs using ball-by-ball match data.
+- Visualize trends in dot ball frequency by over and by innings.
+- Statistically test (using chi-squared test) if any difference is significant.
+- Explore categorical association by checking if teams that bowl more dot balls are more likely to win, analyzing the relationship between dot ball usage and match outcomes.
+
+</td>
+<td style="width:40%; text-align:center;">
+
+<img src="dot_ball.jpg" width="90%"><br>
+<small><em>Source: <a href="https://twitter.com/thetatvaindia/status/1661251214728744960">@thetatvaindia on Twitter</a></em></small>
+
+</td>
+</tr>
+</table>
+
+
+# Data
+
+**Dataset:**
+Ball-by-Ball IT20 (2005–2023)
+This dataset contains delivery-level records from over 1000 men's T20 International matches, including details of batters, bowlers, and ball outcomes.
+
+* **Source:** [Kaggle – Ball-by-Ball IT20 by Jamie Welsh](https://www.kaggle.com/datasets/jamiewelsh2/ball-by-ball-it20?resource=download&select=ball_by_ball_it20.csv)
+
+* **Structure:**
+  Delivery-level data for 1000+ T20I matches, includes batsmen, bowlers, and ball outcomes.
+
+* **Variables:** The dataset has 35 variables(columns) and 425,119 records(rows). Below are the key variables.
+
+| **Variable**     | **Type**  | **Description**                                                    |
+| ---------------- | --------- | ------------------------------------------------------------------ |
+| `Match ID`       | Double    | Unique identifier for each T20I match.                             |
+| `Date`           | Date      | Date when the match was played.                                    |
+| `Innings`        | Double    | Innings number (1 = first, 2 = second).                            |
+| `Over`           | Double    | Over number within the innings (1–20).                             |
+| `Ball`           | Double    | Ball number within the over.                                       |
+| `Batter`         | Character | Player on strike for the delivery.                                 |
+| `Bowler`         | Character | Player delivering the ball.                                        |
+| `Batter Runs`    | Double    | Runs scored off the bat on that ball.                              |
+| `Extra Runs`     | Double    | Runs added due to extras (wides, no-balls, etc.).                  |
+| `Runs From Ball` | Double    | Total runs from the ball (batter + extras).                        |
+| `Ball Rebowled`  | Double    | 1 if the delivery was re-bowled (wide/no-ball), else 0.            |
+| `Wicket`         | Double    | 1 if a wicket fell on this delivery, else 0.                       |
+| `Over Type`\*    | Factor    | Derived: Powerplay (1–6) vs Non-Powerplay (7–20).                  |
+| `Dot Ball`\*     | Binary    | Derived: 1 if valid ball & batter\_runs + extra\_runs = 0, else 0. |
+| `Valid Ball`     | Double    | 1 if delivery was legal; used to filter for analysis.              |
+
+\*Derived variables created during preprocessing.
+
+# Data Cont.
+
+```{r}
+# setting directory
+setwd("D:/Masters/M.DS/Sem 3/Applied Analytics/Assignment 2")
+
+# Load the dataset
+cric_data <- read_csv("data/ball_by_ball_it20.csv", show_col_types = FALSE)
+glimpse(cric_data)
+```
+
+# Data Preprocessing
+
+* **Checked for Missing Values**
+
+  * Found only in dismissal-related columns (`Player Out`, `Method`, `Player Out Runs`, etc.)
+  * `Runs to Get` had NAs for 1st innings, which is expected and valid.
+* **Filtered for Valid Deliveries**
+
+  * Included only deliveries marked as **legal** (`valid_ball == 1`).
+  * Created a binary variable `dot_ball` to flag deliveries where **no runs (batter + extras)** were scored.
+* **Categorised Overs by Phase**
+
+  * Created a new variable `over_type` to classify overs as:
+
+    * `"Powerplay"` (Overs 1–6)
+    * `"Non-Powerplay"` (Overs 7–20)
+* **Outlier Detection & Final Cleaning**
+
+  * Used **boxplots** to inspect `batter_runs`, `extra_runs`, and `over` for outliers.
+  * Applied filters based on **cricket rules** to remove improbable values:
+
+    * `batter_runs ≤ 6`
+    * `extra_runs ≤ 5`
+    * `1 ≤ over ≤ 20`
+* **Fixed Inconsistent Categorical Values**
+
+  * Standardised venue names (e.g., `"R.Premadasa Stadium"` & `"R Premadasa Stadium"`).
+* **Converted Categorical Columns to Factors**
+
+  * Transformed key text columns (`Venue`, `Batter`, `Bowler`, `Winner`, etc.) to **factor type** for efficient processing and grouping.
+
+# Data Preprocessing Cont.
+
+```{r, echo=FALSE}
+# Calculate missing values per column
+missing_values <- sapply(cric_data, function(x) sum(is.na(x)))
+missing_values_filtered <- missing_values[missing_values > 0]
+print(sort(missing_values_filtered, decreasing = TRUE))
+```
+
+```{r, echo=FALSE}
+# rename for easier coding & create derived variables
+cric_data_clean <- cric_data %>%
+  rename(
+    match_id = `Match ID`,
+    over = Over,
+    batter_runs = `Batter Runs`,
+    extra_runs = `Extra Runs`,
+    valid_ball = `Valid Ball`
+  ) %>%
+  filter(valid_ball == 1) %>%  # only valid deliveries
+  mutate(
+    dot_ball = ifelse(batter_runs == 0 & extra_runs == 0, 1, 0),
+    over_type = ifelse(over <= 6, "Powerplay", "Non-Powerplay")
+  )
+
+print("Dot Ball")
+table(cric_data_clean$dot_ball)
+table(cric_data_clean$over_type)
+```
+
+**Plots to show outliers**
+
+```{r,echo=FALSE, fig.width=10, fig.height=3}
+# Plot for Batter Runs
+p1 <- ggplot(cric_data_clean, aes(y = batter_runs)) +
+  geom_boxplot(fill = "skyblue") +
+  labs(title = "Batter Runs") +
+  coord_flip() +
+  theme_minimal()
+
+# Plot for Extra Runs
+p2 <- ggplot(cric_data_clean, aes(y = extra_runs)) +
+  geom_boxplot(fill = "salmon") +
+  labs(title = "Extra Runs") +
+  coord_flip() +
+  theme_minimal()
+
+# Plot for Over
+p3 <- ggplot(cric_data_clean, aes(y = over)) +
+  geom_boxplot(fill = "lightgreen") +
+  labs(title = "Over") +
+  coord_flip() +
+  theme_minimal()
+
+# Display side by side
+p1 + p2 + p3
+```
+
+```{r, echo=FALSE}
+# Final cleaning with mild outlier handling
+cric_data_clean <- cric_data_clean %>%
+  filter(
+    batter_runs <= 6,          # Remove 7+ as outlier unless investigating overthrows
+    extra_runs <= 5,           # 5 is rare but legal (e.g., 5 wides)
+    over >= 1 & over <= 20     # Ensure realistic overs
+  )
+
+print("Dimension of data after removing outliers")
+dim(cric_data_clean)
+```
+
+```{r, echo=FALSE}
+# 1. Fix Venue inconsistencies
+cric_data_clean$Venue <- gsub("R\\.Premadasa Stadium", "R Premadasa Stadium", cric_data_clean$Venue)
+
+# 2. Convert categorical columns to factors
+cric_data_clean <- cric_data_clean %>%
+  mutate(
+    Venue = as.factor(Venue),
+    Batter = as.factor(Batter),
+    Bowler = as.factor(Bowler),
+    `Non Striker` = as.factor(`Non Striker`),
+    Winner = as.factor(Winner),
+    `Bat First` = as.factor(`Bat First`),
+    `Bat Second` = as.factor(`Bat Second`),
+    `over_type` = as.factor(over_type),
+    `Extra Type` = case_when(
+      `Extra Type` %in% c("[]", "", NA) ~ NA_character_,
+      TRUE ~ gsub("\\[|'|\\]| ", "", `Extra Type`)
+    ),
+    `Extra Type` = as.factor(`Extra Type`)
+  )
+```
+
+# Descriptive Statistics and Visualisation(1)
+
+```{r}
+# Create phase for descriptive breakdown (Powerplay, Middle, Death)
+dot_by_phase <- cric_data_clean %>%
+  mutate(phase = case_when(
+    over <= 6 ~ "Powerplay",
+    over >= 17 ~ "Death Overs",
+    TRUE ~ "Middle Overs"
+  )) %>%
+  group_by(phase) %>%
+  summarise(
+    total_balls = n(),
+    dot_balls = sum(dot_ball),
+    dot_percentage = round(100 * dot_balls / total_balls, 2),
+    .groups = "drop"
+  )
+
+knitr::kable(dot_by_phase)
+```
+
+# Descriptive statistics Cont.(2)
+
+```{r}
+# Summary of numeric variables
+num_summary <- summary(cric_data_clean[, c("batter_runs", "extra_runs", "over", "Target Score", "Bowler Runs Conceded", "Innings Runs", "Runs From Ball", "valid_ball")])
+cat("\n\n")
+print(num_summary)
+```
+
+# Decsriptive Statistics Cont.(3)
+
+Dot Ball Trends by Over and Innings
+
+```{r fig.width=10, fig.height=4}
+# 1. Dot % by Over Number (Line)
+dot_by_over <- cric_data_clean %>%
+  group_by(over) %>% summarise(total_balls = n(), dot_balls = sum(dot_ball), dot_percentage = round(100 * dot_balls / total_balls, 2))
+
+p1 <- ggplot(dot_by_over, aes(x = over, y = dot_percentage)) + geom_line(color = "darkblue", size = 1) + geom_point() + 
+  labs(title = "Dot Ball % Across Overs", x = "Over", y = "Dot %") + theme_minimal()
+# 2. Dot % by Over by Innings (Line)
+dot_by_over_innings <- cric_data_clean %>% group_by(Innings, over) %>% summarise(dot_percentage = mean(dot_ball) * 100)
+
+p2 <- ggplot(dot_by_over_innings, aes(x = over, y = dot_percentage, color = factor(Innings))) +
+  geom_line(size = 1) + geom_point() + labs(title = "Dot Ball % by Over (Innings-wise)", x = "Over", y = "Dot %") + 
+  scale_color_manual(values = c("blue", "red"), name = "Innings") + theme_minimal()
+# Display side by side
+p1 + p2
+```
+
+* Dot ball percentage is highest in the early overs (Powerplay), then steadily declines as the innings progresses, indicating that batters score more freely in later overs.
+* Comparatively second innings shows slight higher dot ball percentages compared to the first innings, suggesting that chasing teams may face greater pressure or more disciplined bowling.
+
+# Decsriptive Statistics Cont.(4)
+
+Heatmap of Dot Ball Percentage by Over and Innings
+
+```{r fig.width=10, fig.height=4}
+dot_heat <- cric_data_clean %>%
+  group_by(Innings, over) %>%
+  summarise(dot_rate = mean(dot_ball))
+
+ggplot(dot_heat, aes(x = over, y = factor(Innings), fill = dot_rate)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient(low = "white", high = "darkblue", name = "Dot %") +
+  labs(title = "Dot Ball Heatmap by Over & Innings", x = "Over", y = "Innings") +
+  theme_minimal()
+```
+
+* The darkest cells in the left columns show that dot balls are much more frequent in the early overs of each innings, suggesting that batters find it hardest to score at the start—especially during the Powerplay phase.
+
+# Decsriptive Statistics Cont.(5)
+
+To further investigate the effect of dot ball pressure, a specific match was selected in which a batter was dismissed following a streak of three or more consecutive dot balls. This case serves as a representative illustration—highlighting how sustained dot ball pressure may contribute to wickets. It is intended as a narrative example, not as statistical proof or a generalization across all matches.
+
+```{r}
+# Identify matches where a batter was dismissed after 3+ dot balls
+dot_dismissal_matches <- cric_data_clean %>% arrange(match_id, Innings, over, Ball) %>% group_by(match_id, Innings, Batter) %>%
+  mutate( dot_streak = with(rle(dot_ball), rep(lengths * values, lengths)), dismissed = !is.na(Method)) %>%
+  filter(dismissed, dot_streak >= 3) %>% ungroup() %>% count(match_id, sort = TRUE)
+options(width = 20, heigth=10)
+print(head(dot_dismissal_matches))
+```
+
+```{r}
+# one match_id from above 
+one_match <- cric_data_clean %>% filter(match_id == 1283049) %>% arrange(Innings, over, Ball) %>%
+  select(Innings, over, Ball, Batter, dot_ball, Method, batter_runs, extra_runs)
+knitr::kable(head(one_match, 5)) 
+```
+
+# Decsriptive Statistics Cont.(6)
+
+```{r, fig.width=10, fig.height=3}
+match_id_selected <- 1283049
+
+selected_batters <- cric_data_clean %>% filter(match_id == match_id_selected, !is.na(Method)) %>%
+  pull(Batter) %>% unique() %>% head(3)
+
+batter_plot_data <- cric_data_clean %>%
+  filter(match_id == match_id_selected, Batter %in% selected_batters) %>% group_by(Batter) %>%
+  mutate( ball_number = row_number(), dot_flag = ifelse(dot_ball == 1, "Dot Ball", "Run Scored"),
+    dismissed = ifelse(!is.na(Method), TRUE, FALSE)) %>% ungroup()
+
+ggplot(batter_plot_data, aes(x = ball_number, y = 1, fill = dot_flag)) +
+  geom_col(width = 1, show.legend = TRUE) +
+  scale_fill_manual(values = c("Dot Ball" = "#F94144", "Run Scored" = "#43AA8B")) +
+  geom_vline( data = batter_plot_data %>% filter(dismissed), aes(xintercept = ball_number), linetype = "dashed", color = "black", linewidth = 1) +
+  facet_wrap(~ Batter, scales = "free_x") +
+  labs( title = paste("Ball-by-Ball Sequence for Selected Batters in Match", match_id_selected),
+        x = "Ball Number", y = "Delivery (indicator only)", fill = "Type", caption = "Dashed black line indicates the delivery on which the batter was dismissed.") +
+  theme_minimal() +
+  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
+```
+
+# Hypothesis Testing
+
+Test whether the **proportion of dot balls** differs between **Powerplay** and **Non-Powerplay** overs.
+
+**Null Hypothesis (H_0)**
+
+- $H_0$: The proportion of dot balls is the same in Powerplay and Non-Powerplay overs.
+
+$$
+p_1 = p_2
+$$
+
+**Alternate Hypothesis (H_A)**
+
+- $H_A$: The proportions are different.
+
+$$
+p_1 \ne p_2
+$$
+
+Assumptions:
+
+* Independent observations(each ball is a separate event)
+* Sufficient sample size for proportions (normal approximation valid)
+* The test assumes binary outcomes (dot vs non-dot), which matches dot\_ball flag.
+
+```{r}
+# Summarise dot balls by over type
+dot_table <- cric_data_clean %>%
+  group_by(over_type) %>%
+  summarise(
+    dot_balls = sum(dot_ball),
+    total_balls = n()
+  )
+
+knitr::kable(dot_table)
+```
+
+# Hypothesis Testing Cont.
+
+```{r}
+# Chi-square test for proportion difference with confidence interval
+
+chi_result <- prop.test(
+  x = dot_table$dot_balls,
+  n = dot_table$total_balls,
+  alternative = "two.sided",
+  correct = FALSE  # Turn off Yates correction for large sample
+)
+chi_result
+```
+
+
+- Since the p-value is **extremely small** (far less than 0.05) and the confidence interval does not include 0, reject the null hypothesis.
+- There is a **statistically significant difference** in dot ball frequency between Powerplay and Non-Powerplay overs.
+
+# Hypothesis Testing Cont.
+
+```{r}
+dot_table <- dot_table %>%
+  mutate(dot_percentage = round(100 * dot_balls / total_balls, 2))
+
+ggplot(dot_table, aes(x = over_type, y = dot_percentage, fill = over_type)) +
+  geom_col(width = 0.6, show.legend = FALSE) +
+  geom_text(aes(label = paste0(dot_percentage, "%")), vjust = 1.5, color = "white", size = 5) +
+  scale_fill_manual(values = c("Powerplay" = "#219ebc", "Non-Powerplay" = "#8ecae6")) +
+  labs(
+    title = "Dot Ball % in Powerplay vs Non-Powerplay Overs",
+    x = "Over Type",
+    y = "Dot Ball %"
+  ) +
+  annotate("text",
+           x = 1.5,
+           y = max(dot_table$dot_percentage) + 6,
+           label = "Higher dot ball frequency during Powerplay",
+           size = 4.5,
+           color = "black",
+           fontface = "italic") +
+  ylim(0, max(dot_table$dot_percentage) + 12) +
+  theme_minimal(base_size = 13)
+```
+
+# Categorical association
+
+Is there an association between dot ball usage and match outcome (win/loss) in T20 Internationals?
+
+**Method:**
+
+* A **Chi-Square Test of Independence** was used to test the relationship between:
+
+  * Dot Ball Usage Category (High vs Low) - calculated based on above or below median dot ball rate.
+  * Match Outcome (Win vs Loss) - using the Chased Successfully column (1 = Won, 0 = Lost).
+
+```{r}
+match_outcome <- cric_data_clean %>%
+  filter(Innings == 2) %>%
+  group_by(match_id) %>%
+  summarise(
+    dot_rate = mean(dot_ball),
+    result = unique(ifelse(`Chased Successfully` == 1, "Won", "Lost")))
+match_outcome <- match_outcome %>%
+  mutate(dot_usage_category = ifelse(dot_rate >= median(dot_rate), "High", "Low"))
+
+table_dot_win <- table(match_outcome$dot_usage_category, match_outcome$result)
+chisq.test(table_dot_win)
+```
+
+* The p-value < 0.001 indicates a strong association between dot ball usage and match outcome.
+
+# Categorical association Cont.
+
+```{r}
+df_plot <- as.data.frame(table_dot_win)
+colnames(df_plot) <- c("DotUsage", "MatchResult", "Count")
+
+df_prop <- df_plot %>%
+  group_by(DotUsage) %>%
+  mutate(Proportion = Count / sum(Count))
+
+ggplot(df_prop, aes(x = DotUsage, y = Proportion, fill = MatchResult)) +
+  geom_bar(stat = "identity", position = "fill") +
+  labs(
+    title = "Match Outcome by Dot Ball Usage Category",
+    x = "Dot Ball Usage",
+    y = "Proportion",
+    fill = "Match Result"
+  ) +
+  scale_y_continuous(labels = scales::percent) +
+  theme_minimal()
+```
+
+* Teams with **lower dot ball usage** had a **higher winning proportion**.
+* Teams with higher dot ball usage were more likely to lose.
+
+# Discussion
+
+**Key Findings:**
+
+* Dot balls occur more frequently during Powerplay overs (1–6) than in later overs.
+* The difference in dot ball frequency between Powerplay and Non-Powerplay is statistically significant (Chi-squared test, p < 0.001).
+* A Chi-squared test of association showed that teams with fewer dot balls were more likely to win.
+
+**Strengths:**
+
+* Used a large dataset of 400,000+ deliveries for strong insights.
+* Applied both statistical testing and categorical analysis.
+
+**Limitations:**
+
+* Did not consider match context like batting first or second.
+* Dot ball usage was categorized into ‘High’ and ‘Low’ using a median split, which may oversimplify underlying variation.
+
+**Dot balls are significantly more common in the Powerplay phase of T20 cricket, and higher dot ball frequency makes batting team to lose which shows the pressure dot ball can build on a team.**
+<div style="text-align:center;">
+  <img src="conc.jpg" width="40%"><br>
+  <small><em>Source: <a href="https://www.indiatoday.in/sports/cricket/story/india-vs-south-africa-first-ever-t20i-sachin-tendulkar-1098048-2017-12-01">@IndiaToday</a></em></small>
+</div>
+
+# References
+
+* Partridge, J. (2025, March 10). What Is A Dot Ball In Cricket? - Caught At Point. Caught at Point. [https://caughtatpoint.com/2025/03/10/what-is-a-dot-ball-in-cricket/](https://caughtatpoint.com/2025/03/10/what-is-a-dot-ball-in-cricket/)
+* (2025). X (Formerly Twitter). [https://x.com/ICC/status/1305771585949896706?lang=en](https://x.com/ICC/status/1305771585949896706?lang=en)
+* Jamie. (2023). T20I Men’s Cricket Match Data (2003 - 2023). Kaggle.com. [https://www.kaggle.com/datasets/jamiewelsh2/ball-by-ball-it20?resource=download\&select=ball\_by\_ball\_it20.csv](https://www.kaggle.com/datasets/jamiewelsh2/ball-by-ball-it20?resource=download&select=ball_by_ball_it20.csv)
+* 11 years ago today, India played their first-ever T20 International. And they beat South Africa. (n.d.). India Today. [https://www.indiatoday.in/sports/cricket/story/india-vs-south-africa-first-ever-t20i-sachin-tendulkar-1098048-2017-12-01](https://www.indiatoday.in/sports/cricket/story/india-vs-south-africa-first-ever-t20i-sachin-tendulkar-1098048-2017-12-01)
+* A new data version - Cricsheet. (2025). Cricsheet.org. [https://cricsheet.org/article/a-new-data-version/](https://cricsheet.org/article/a-new-data-version/)
+* (2025). X (Formerly Twitter). [https://x.com/thetatvaindia/status/1661251214728744960](https://x.com/thetatvaindia/status/1661251214728744960)
+* Cricket Rules and Regulations | ICC Rules of Cricket. (n.d.). [Www.icc-Cricket.com](http://Www.icc-Cricket.com). [https://www.icc-cricket.com/about/cricket/rules-and-regulations/playing-conditions](https://www.icc-cricket.com/about/cricket/rules-and-regulations/playing-conditions)
+
